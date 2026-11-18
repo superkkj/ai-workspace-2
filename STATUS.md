@@ -1,7 +1,7 @@
 # 현재 진행 상황
 
 - 최종 기록일: 2026-11-18 (Asia/Seoul)
-- 작업 단계: 새 앱용 저장소 구성 / 문서 정리 중
+- 작업 단계: 새 앱 개발 준비 완료 / 앱 주제와 첫 기능 선택 대기
 - 저장소: https://github.com/superkkj/ai-workspace-2
 - 공개 범위: 공개(Public)
 - 기본 브랜치: `main`
@@ -17,8 +17,9 @@
 - [x] GitHub `superkkj` 계정에 공개 저장소 `ai-workspace-2` 생성
 - [x] ChatGPT Codex Connector의 선택 저장소에 `ai-workspace-2` 추가하고 저장 완료 화면 확인
 - [x] GitHub Import로 원본 파일과 변경 이력 복제 완료 — 원본과 동일한 커밋 `cf25dd7c5c3b04388bfe9586d03e504bcef3275e`, 파일 8개의 blob SHA 일치 확인
-- [ ] 새 앱용 README, 진행 기록, 검사 기록 정리 및 원격 반영
-- [ ] 연결 도구에서 실제 파일 쓰기와 재조회 확인
+- [x] 새 앱용 README, 진행 기록, 검사 기록 정리 및 원격 반영
+- [x] 연결 도구에서 실제 커밋 생성·main 반영 및 문서 8개 재조회 — 준비한 내용과 모두 일치
+- 확인한 문서 반영 커밋: [d879c2c](https://github.com/superkkj/ai-workspace-2/commit/d879c2c9639bb9908edba8bc968cc981c7b71603)
 
 ## 적용할 개발 방식
 
