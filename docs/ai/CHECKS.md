@@ -17,7 +17,10 @@
 | 로그인 이후 UI/저장/휴대폰 실사용 | 브라우저 ChatGPT 로그인 시도 | 미실행. 자동 승인 검토가 로그인 시작 동작을 거절함. 코드 검사·배포 성공과 구분 |
 | 로컬 브라우저 | sites-preview start / status | 해당 preview가 다른 앱 ‘열어줘’를 제공하는 것을 확인. 이를 수정하지 않았으므로 핏로그의 로컬 화면 검사는 미실행 |
 | 실제 두 계정 | 실계정 간 작성·수정·권한 확인 | 미실행. SQLite 테스트의 두 사용자 fixture와 구분 |
-| GitHub Actions | .github/workflows/fitlog-ci.yml | workflow 구성. remote 실행 결과는 아직 미확인 |
+| GitHub 소스 반영 | Git objects로 소스 커밋 → 작업 브랜치 반영 → git fetch 후 index와 원격 commit의 diff 확인 | 성공. 앱 소스 커밋 ab45a347a8d9de41761eae14281b4ef68067843e, 137개 변경 파일. 원격과 로컬 준비본의 차이 없음. Draft PR #1 생성 |
+| GitHub Actions | .github/workflows/fitlog-ci.yml, pull_request 실행 | 성공. 실행 44264167415의 상태 completed / conclusion success 확인. 앱 소스 커밋 ab45a347a8d9de41761eae14281b4ef68067843e에서 의존성 설치·typecheck·test·build 모두 성공 |
+
+원격 검사: https://github.com/superkkj/ai-workspace-2/actions/runs/44264167415 · 검토용 PR: https://github.com/superkkj/ai-workspace-2/pull/1
 
 ### 16개 API 검사의 범위
 

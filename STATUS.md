@@ -6,6 +6,8 @@
 - 저장소: https://github.com/superkkj/ai-workspace-2
 - 소스 경로: apps/fitlog
 - 작업 브랜치: feature/fitlog-20261118 (main에 자동 병합하지 않음)
+- 검토용 Draft PR: https://github.com/superkkj/ai-workspace-2/pull/1
+- 확인한 앱 소스 커밋: ab45a347a8d9de41761eae14281b4ef68067843e (137개 변경 파일을 원격 fetch 후 로컬 준비본과 대조, 차이 없음)
 - 소스 공개 범위: 공개(Public), 실제 서비스 데이터는 저장소에 포함하지 않음
 - 비공개 앱: https://fitlog-running-8afa63.insightfulinlet4.chatgpt.site
 
@@ -31,7 +33,7 @@
 - 배포 ID: appgdep_6afd581a465081919f2be4fd1cf078b0.
 - 브라우저에서 배포 주소의 ‘Log in to access’ 화면 확인.
 - 계획 및 서버 독립 검토를 별도 ChatGPT 작업자에게 받았으며 Claude를 실행했다고 기록하지 않음.
-- GitHub Actions에는 같은 타입 검사·통합 검사·빌드를 실행하는 workflow를 구성. 원격 실행 결과는 별도 확인 대상.
+- GitHub Actions 원격 검사 성공: 의존성 설치·타입 검사·통합 검사·빌드. 실행 44264167415, 앱 소스 커밋 ab45a347a8d9de41761eae14281b4ef68067843e.
 
 ## 남은 확인과 제한
 
@@ -39,7 +41,7 @@
 2. 공용 로컬 preview는 다른 앱 ‘열어줘’가 사용 중이어서 그 미리보기를 변경하지 않았다. 로컬 D1 적용과 코드 검사는 별도로 완료했다.
 3. FITLOG_MODERATOR_USER_IDS는 아직 운영 계정으로 지정하지 않았다. 빈 설정은 누구에게도 운영 권한을 주지 않는다.
 4. 실제 서로 다른 계정의 참여·공개 커뮤니티 운영·장기 반복 사용·지불 의사는 미검증이다.
-5. GitHub Actions의 원격 실행 결과와 소스 반영 커밋은 GitHub의 해당 작업 브랜치/PR에서 확인한다.
+5. GitHub 앱 소스 저장과 원격 CI는 확인했다. Draft PR은 검토용으로 열려 있으며 main 병합은 하지 않았다.
 
 ## 다음 작업
 
