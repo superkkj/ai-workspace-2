@@ -1,18 +1,33 @@
 # 검사 명령과 결과
 
-## 현재 상태
+## 핏로그 첫 버전 — 2026-11-18
 
-이 저장소에는 아직 프로그램 소스 코드, 실행 환경, 빌드·테스트 설정이 없습니다. 프로젝트가 정해지면 실제 설정과 스크립트를 확인해 아래 표를 채웁니다. 명령을 추측해서 실행 가능한 것으로 기록하지 않습니다.
+실행 위치: apps/fitlog. Node 24.22.1, npm, Vinext 1.0.0-beta.5, Vite 8.0.13, Wrangler 4.92.0. 아래 명령은 package.json 또는 제공된 Sites 실행 가이드에서 확인했다.
 
-## 프로젝트 검사 목록
+| 검사 | 명령·방법 | 결과와 범위 |
+|---|---|---|
+| 의존성 설치 | Sites install-dependencies.mjs → npm ci | 성공. lockfile의 687 packages 설치. esbuild는 검사 코드의 직접 devDependency로 고정 |
+| 타입 | npm run typecheck | 성공, 전체 TypeScript 오류 0개 |
+| API 통합 | npm test → node --test tests/api.test.mjs | 성공, 16개 모두 통과. 실제 생성 SQL을 node:sqlite에 적용하고 실제 API handler 실행 |
+| 스키마 | npm run db:generate | 성공, 7개 테이블의 초기 schema-only SQL과 Drizzle metadata 생성. 예시 INSERT 없음 |
+| 빌드 | Sites build-site.mjs → npm run build | 성공, Worker + client 산출물. / 및 /api/:path+ 라우트 생성 |
+| 로컬 D1 | node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_lumpy_yellow_claw.sql | 성공, 로컬 DB에 16개 SQL 명령 적용. 운영 DB 검사와 구분 |
+| 비공개 배포 | Sites source workflow 및 save_version_and_deploy_private | 성공. source 39ea40673b05a56b377cdebbc8838d9d14f4cb85, deployment appgdep_6afd581a465081919f2be4fd1cf078b0, 상태 succeeded |
+| 배포 진입 화면 | Cloud Browser에서 실제 배포 주소 열기 | 성공, owner-private ‘Log in to access’ 화면 확인 |
+| 로그인 이후 UI/저장/휴대폰 실사용 | 브라우저 ChatGPT 로그인 시도 | 미실행. 자동 승인 검토가 로그인 시작 동작을 거절함. 코드 검사·배포 성공과 구분 |
+| 로컬 브라우저 | sites-preview start / status | 해당 preview가 다른 앱 ‘열어줘’를 제공하는 것을 확인. 이를 수정하지 않았으므로 핏로그의 로컬 화면 검사는 미실행 |
+| 실제 두 계정 | 실계정 간 작성·수정·권한 확인 | 미실행. SQLite 테스트의 두 사용자 fixture와 구분 |
+| GitHub Actions | .github/workflows/fitlog-ci.yml | workflow 구성. remote 실행 결과는 아직 미확인 |
 
-| 확인 대상 | 확인된 명령·방법 | 실행 환경·위치 | 상태·이유 |
-| --- | --- | --- | --- |
-| 프로젝트 빌드 | 미설정 | 프로젝트 미정 | 미실행 — 소스와 빌드 설정 없음 |
-| 자동 테스트 | 미설정 | 프로젝트 미정 | 미실행 — 테스트 설정 없음 |
-| 정적 검사·형식 검사 | 미설정 | 프로젝트 미정 | 미실행 — 언어와 도구 미정 |
-| 실제 사용 흐름 | 첫 기능의 완료 기준을 정한 뒤 작성 | 실행 환경 미정 | 미실행 — 실행할 프로그램 없음 |
-| 변이 테스트 | 도입 필요성을 판단한 뒤 작성 | 환경 미정 | 미실행 — 현재 필수 검사로 정하지 않음 |
+### 16개 API 검사의 범위
+
+빈 DB·실제/예시 분리, 무인증 쓰기 및 비공개 읽기 차단, 본인 ID만 session에 반환, 비공개 메모·인증 ID의 게시물 유출 차단, 신발 입력 검증과 소유권, 중복 요청, 신발 스냅샷 보존, 타인 글/답변/선택/후기 수정 차단, 질문→선택→후기 전이, 후기 작성 당시 사용 기간 고정, 날짜/숫자 검증, 답변 재시도 대상 충돌, 검색/필터, FK 연관 삭제, 명시적 운영자 신고 권한, 신고 처리 경쟁 조건, Origin/본문 크기/저장소 실패 처리.
+
+D1의 전송 모양만 SQLite adapter로 연결했다. 애플리케이션 SQL과 판단 로직을 가짜 성공 응답으로 바꾸지 않았다. 실제 hosted D1·ChatGPT 로그인 서비스·여러 실계정 동작까지 검증했다는 뜻은 아니다.
+
+### 독립 검토와 수정
+
+별도 ChatGPT 검토자가 서버 권한·자료 공개·삭제·상태 로직을 읽었다. ‘조회 날짜가 지나면 첫날 후기도 30일 후기로 표시될 수 있는 문제’를 발견했다. updated_at을 기준으로 사용 기간을 고정했고, 30일 뒤 재조회와 실제 후기 수정의 차이를 회귀 검사로 확인했다. Claude Code를 실행하지 않았다.
 
 ## 확인된 저장소 점검
 

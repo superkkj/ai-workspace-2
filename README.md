@@ -54,9 +54,16 @@
 
 ## 이 저장소에서 만들 앱
 
-앱의 주제와 이름은 아직 선택하지 않았습니다. `ai-workspace-2`는 현재 작업 공간 이름입니다. 만들 프로그램을 정하면 기획서와 소스 코드를 추가하고, `STATUS.md`의 목표와 다음 작업을 갱신합니다. 작업 방법이 실제로 반복될 때 필요한 지침을 보완합니다.
+2026-11-18 사용자가 선택한 첫 앱은 **핏로그(FITLOG)**입니다. 러닝화 기록 → 질문 → 답변 → 선택 → 착용 후기를 연결하는 웹 플랫폼입니다.
 
-프로젝트를 정하면 실제 빌드·테스트 명령부터 확인해 `docs/ai/CHECKS.md`에 기록합니다. 자동 훅, GitHub Actions, 러너는 반복해서 실행할 검사가 확인된 뒤 필요에 따라 추가합니다. 현재는 자동 실행이나 배포 설정이 없습니다.
+- 소스와 실행 방법: [apps/fitlog/README.md](apps/fitlog/README.md)
+- 기능 범위와 API: [apps/fitlog/docs/IMPLEMENTATION.md](apps/fitlog/docs/IMPLEMENTATION.md)
+- 앱 진행 기록: [apps/fitlog/STATUS.md](apps/fitlog/STATUS.md)
+- 검증 계획: [apps/fitlog/docs/VALIDATION_PLAN.md](apps/fitlog/docs/VALIDATION_PLAN.md)
+
+앱별 코드와 문서는 `apps/` 아래에서 분리합니다. 이 저장소는 공개 소스를 관리하며, 운영 데이터와 인증 정보는 포함하지 않습니다.
+
+프로젝트의 실제 빌드·테스트 명령과 실행 결과는 `docs/ai/CHECKS.md`에 기록합니다. 자동 훅·CI·배포는 실제 구성과 확인 결과가 있는 경우만 완료로 표시합니다. 최신 상태는 `STATUS.md`에서 확인합니다.
 
 ## 기록할 때 지킬 점
 
