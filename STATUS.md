@@ -26,7 +26,7 @@
 - Sites 소스 커밋: `572fc602e1423f3ea60687941053577b7cf1f25b`.
 - 개선 배포 ID: `appgdep_6afd6a6aa8888191bba3366d20e7fb31`, 상태 `succeeded`.
 - 별도 ChatGPT 작업자가 원인 분석·구현·독립 검토를 분담. Claude를 실행했다고 기록하지 않음.
-- GitHub 개선본 커밋과 원격 CI 결과는 업로드 후 이 기록에 갱신한다. 이전 첫 버전의 CI 성공을 이번 개선본 결과로 대신하지 않는다.
+- GitHub 개선본 커밋: `f8def8368ef98a5837fc6c7fbdfec232ae1aabb2`. 기존 작업 브랜치와 Draft PR #1에 반영했고, 해당 커밋의 [원격 CI](https://github.com/superkkj/ai-workspace-2/actions/runs/44273087582)가 `completed / success`로 종료됐다. 저장소 원격 트리와 로컬 스테이징 소스의 일치도 확인했다.
 
 ## 남은 확인과 제한
 

@@ -15,7 +15,8 @@
 | 실제 로그인 | ChatGPT 로그인 시작→사용자가 선택한 Google→보안 입력 | 시작 권한은 명시적으로 받음. 이후 Google이 비활동으로 세션 종료를 표시. 로그인 성공·운영 DB 쓰기는 미확인 |
 | 로컬 화면 | sites-preview start/status 및 Cloud Browser | 처음 연결 거절, 종료된 preview 확인 뒤 재시작. 실패 탭 재연결에서 URL 정책 제한. 우회하지 않음 |
 | 데스크톱/모바일 사용 | 핵심 CRUD, 가상 키보드, 화면 배치 | **미검증**. 코드상 반응형 대응과 helper 검사를 시각·실계정 검증으로 표현하지 않음 |
-| GitHub 개선본 | 작업 브랜치·PR 갱신 및 새 CI | 이번 개선 커밋의 업로드/원격 CI 결과는 아래에서 갱신 예정 |
+| GitHub 개선본 | 작업 브랜치·기존 Draft PR #1 반영 및 원격 트리 대조 | `f8def8368ef98a5837fc6c7fbdfec232ae1aabb2` 업로드 성공, 원격 트리와 로컬 스테이징 일치 |
+| GitHub 자동 검사 | 개선 소스 커밋의 Fitlog CI | [실행 44273087582](https://github.com/superkkj/ai-workspace-2/actions/runs/44273087582), `completed / success` 확인 |
 
 ### 검사한 중요한 조건
 
