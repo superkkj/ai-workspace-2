@@ -1,10 +1,11 @@
-# ai-workspace
+# ai-workspace-2
 
-AI와 함께 개발하면서 코드, 진행 상황, 확인된 해결 경험을 쌓는 개인 작업 공간입니다. 이전 대화에서 정리한 개발 방식을 문서로 남기고, 다음 작업 때 필요한 내용을 다시 읽어 이어 갑니다.
+이 대화에서 별도 애플리케이션을 개발하기 위한 작업 공간입니다. 기존 [superkkj/ai-workspace](https://github.com/superkkj/ai-workspace)의 문서와 변경 이력을 복제하고, 새 프로젝트의 진행 기록을 초기화했습니다. 개발 규칙은 이어받되, 앱의 목표·코드·진행 상황은 이 저장소에서 관리합니다.
 
 - GitHub 계정: `superkkj`
-- 저장소: [superkkj/ai-workspace](https://github.com/superkkj/ai-workspace)
-- 공개 범위: **비공개(Private)**
+- 저장소: [superkkj/ai-workspace-2](https://github.com/superkkj/ai-workspace-2)
+- 공개 범위: **공개(Public)**
+- 복제 원본: [superkkj/ai-workspace](https://github.com/superkkj/ai-workspace)
 - 실제 연결·업로드 상태: [STATUS.md](STATUS.md)에서 확인합니다.
 
 ## 파일 역할
@@ -37,7 +38,7 @@ AI와 함께 개발하면서 코드, 진행 상황, 확인된 해결 경험을 �
 
 ## 새 대화에서 시작할 때
 
-> superkkj/ai-workspace의 AGENTS.md와 STATUS.md를 먼저 읽어 줘. 현재 작업에 필요한 README.md, docs/ai/WORKFLOW.md, LESSONS.md, docs/ai/CHECKS.md도 확인하고, 다음 할 일을 이어서 진행해 줘. 실제로 확인한 결과만 기록해 줘.
+> superkkj/ai-workspace-2의 AGENTS.md와 STATUS.md를 먼저 읽어 줘. 현재 작업에 필요한 README.md, docs/ai/WORKFLOW.md, LESSONS.md, docs/ai/CHECKS.md도 확인하고, 다음 할 일을 이어서 진행해 줘. 실제로 확인한 결과만 기록해 줘.
 
 ## 작업을 마칠 때
 
@@ -51,9 +52,9 @@ AI와 함께 개발하면서 코드, 진행 상황, 확인된 해결 경험을 �
 
 필요할 때 **Codex로 구현 → Claude로 독립 검토 → Codex로 수정·재검사**하는 방식으로 나눌 수 있습니다. 검토할 변경 범위, 완료 기준, 검사 결과를 함께 전달합니다. 두 도구를 자동 연결하는 설정은 아직 없으며, 한 도구만으로 작업을 진행해도 됩니다.
 
-## 첫 프로젝트
+## 이 저장소에서 만들 앱
 
-아직 선택하지 않았습니다. 만들 프로그램을 정하면 기획서와 소스 코드를 추가하고, `STATUS.md`의 목표와 다음 작업을 갱신합니다. 작업 방법이 실제로 반복될 때 필요한 지침을 보완합니다.
+앱의 주제와 이름은 아직 선택하지 않았습니다. `ai-workspace-2`는 현재 작업 공간 이름입니다. 만들 프로그램을 정하면 기획서와 소스 코드를 추가하고, `STATUS.md`의 목표와 다음 작업을 갱신합니다. 작업 방법이 실제로 반복될 때 필요한 지침을 보완합니다.
 
 프로젝트를 정하면 실제 빌드·테스트 명령부터 확인해 `docs/ai/CHECKS.md`에 기록합니다. 자동 훅, GitHub Actions, 러너는 반복해서 실행할 검사가 확인된 뒤 필요에 따라 추가합니다. 현재는 자동 실행이나 배포 설정이 없습니다.
 
