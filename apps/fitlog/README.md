@@ -13,6 +13,13 @@
 - 로그인 사용자 소유권 검사, 신고와 명시적으로 지정한 운영자의 처리
 - 실제 서버 저장, 가상 예시는 별도 화면에서만 제공
 
+## 이어 쓰기와 기록 찾기
+
+- 질문·답변·신발·선택·후기의 작성 내용은 로그인 사용자별로 현재 브라우저 탭에 임시 보관합니다. 창 닫기나 새로고침 후 같은 폼을 열면 복구하며, 저장 성공 또는 명시적인 초안 정리 때 해당 초안만 지웁니다. 탭을 완전히 닫거나 다른 기기로 이동하면 복구를 보장하지 않습니다.
+- 저장 결과가 확인되지 않으면 원래 입력과 요청 ID를 보존합니다. 생성 재시도는 같은 요청으로 확인하고, 수정 재시도는 최신 기록을 먼저 읽어 원래 보낸 내용과 같은지 확인합니다. 다른 내용이 있으면 자동으로 덮어쓰지 않습니다.
+- 탭·검색·필터·선택한 글은 주소에 남겨 뒤로/앞으로 가기와 새로고침에서 복원합니다. 최종 선택한 신발과 착용 후기 내용으로도 검색합니다.
+- 신발을 등록한 뒤 또는 신발 카드의 ‘이 신발로 질문하기’로 기준 정보를 붙일 수 있습니다. 답변 없이도 선택과 후기를 남길 수 있습니다.
+
 외부 리뷰를 수집하지 않으며 사이즈 정답·의학적 효과를 보장하지 않습니다. 제품명과 조건은 사용자가 입력한 내용입니다. 결제·자동 알림·AI 추천·이미지 업로드는 현재 기능이 아닙니다.
 
 ## 구성
@@ -40,10 +47,11 @@ npm run build
 
 ```sh
 node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0000_lumpy_yellow_claw.sql
+node --import ./scripts/sites-env.mjs ./node_modules/wrangler/bin/wrangler.js d1 execute DB --local --config dist/server/wrangler.json --persist-to .wrangler/state --file drizzle/0001_tranquil_shinko_yamashiro.sql
 npm run dev
 ```
 
-이미 적용된 SQL을 다시 실행하지 마세요. 스키마 변경 시 `npm run db:generate`로 새 마이그레이션을 만들고 생성된 SQL과 metadata를 함께 검토합니다. 기존에 배포된 마이그레이션은 고치지 않습니다.
+이미 적용된 SQL을 다시 실행하지 마세요. 첫 버전의 `0000`이 적용된 DB에는 새 `0001`만 한 번 적용합니다. `0001`은 기존 자료를 유지하며 생성 요청 비교용 nullable 열 3개를 추가합니다. 스키마 변경 시 `npm run db:generate`로 새 마이그레이션을 만들고 생성된 SQL과 metadata를 함께 검토합니다. 기존에 배포된 마이그레이션은 고치지 않습니다. 운영 DB의 새 마이그레이션은 Sites 배포 과정에서 Worker보다 먼저 적용됩니다.
 
 실행된 검사의 구체적 명령과 결과는 저장소 루트 `docs/ai/CHECKS.md`에 남깁니다. 사용자 PC에서 직접 실행한 것은 아직 아닙니다.
 

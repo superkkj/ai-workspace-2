@@ -2,23 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ArrowRight, Check, LoaderCircle, X } from "lucide-react";
-
-export class ApiError extends Error {
-  status: number;
-  constructor(message: string, status: number) { super(message); this.name = "ApiError"; this.status = status; }
-}
-
-export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
-  const response = await fetch(path, {
-    ...options,
-    cache: "no-store",
-    credentials: "same-origin",
-    headers: { ...(options.body ? { "Content-Type": "application/json" } : {}), ...options.headers },
-  });
-  const payload = await response.json().catch(() => null) as { error?: string } | null;
-  if (!response.ok) throw new ApiError(payload?.error || "연결이 원활하지 않아요. 잠시 후 다시 시도해 주세요.", response.status);
-  return payload as T;
-}
+export { ApiError, api } from "../../lib/client/submission";
 
 export function humanDate(value: string): string {
   const date = new Date(value);
@@ -38,8 +22,8 @@ export function FormError({ error }: { error: string }) {
   return error ? <p className="form-error" role="alert">{error}</p> : null;
 }
 
-export function SaveButton({ busy, children = "저장하기" }: { busy: boolean; children?: ReactNode }) {
-  return <button className="btn btn-primary" disabled={busy} type="submit">{busy ? <LoaderCircle size={17} className="spin" /> : <Check size={17} />}{busy ? "저장하는 중…" : children}</button>;
+export function SaveButton({ busy, disabled = false, children = "저장하기" }: { busy: boolean; disabled?: boolean; children?: ReactNode }) {
+  return <button className="btn btn-primary" disabled={busy || disabled} type="submit">{busy ? <LoaderCircle size={17} className="spin" /> : <Check size={17} />}{busy ? "저장하는 중…" : children}</button>;
 }
 
 export function Modal({ title, subtitle, children, onClose, busy = false, wide = false }: { title: string; subtitle?: string; children: ReactNode; onClose: () => void; busy?: boolean; wide?: boolean }) {
@@ -60,7 +44,7 @@ export function Modal({ title, subtitle, children, onClose, busy = false, wide =
     const handleKey = (event: KeyboardEvent) => {
       if (event.key === "Escape" && !busyRef.current) { event.preventDefault(); closeRef.current(); }
       if (event.key === "Tab") {
-        const nodes = [...(ref.current?.querySelectorAll<HTMLElement>("a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex='0']") ?? [])].filter(el => el.getClientRects().length > 0);
+        const nodes = [...(ref.current?.querySelectorAll<HTMLElement>("a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex='0']") ?? [])].filter(el => !el.matches(":disabled") && el.getClientRects().length > 0);
         const first = nodes[0]; const last = nodes[nodes.length - 1];
         if (!first) { event.preventDefault(); ref.current?.focus(); return; }
         if (event.shiftKey && (document.activeElement === first || !ref.current?.contains(document.activeElement))) { event.preventDefault(); last.focus(); }

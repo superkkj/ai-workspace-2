@@ -134,7 +134,8 @@ test("shoe writes validate real inputs, trim values, and isolate each owner's re
   assert.equal(s.brand, "브랜드");
   assert.equal((await api("GET", "shoes", undefined, bob)).data.items.length, 0);
   assert.equal((await api("PATCH", `shoes/${s.id}`, shoe(), bob)).status, 404);
-  assert.equal((await api("DELETE", `shoes/${s.id}`, undefined, bob)).status, 404);
+  assert.equal((await api("DELETE", `shoes/${s.id}`, undefined, bob)).status, 200);
+  assert.equal((await api("GET", "shoes")).data.items[0].id, s.id, "an unowned delete must preserve the shoe");
   assert.equal((await api("PATCH", `shoes/${s.id}`, shoe({ model: "수정 러너" }))).data.item.model, "수정 러너");
   assert.equal(db.count("shoes"), 1);
 });
@@ -175,10 +176,14 @@ test("only question authors can edit/delete/choose/review; answering doesn't gra
   const q = (await api("POST", "questions", question())).data.item;
   const a = (await api("POST", `questions/${q.id}/answers`, answer(), bob)).data.item;
   for (const [method, suffix, body] of [["PATCH", "", question()], ["DELETE", ""], ["PUT", "/choice", chosen], ["PUT", "/review", review()], ["DELETE", "/review"]]) {
-    assert.equal((await api(method, `questions/${q.id}${suffix}`, body, bob)).status, 404, method + suffix);
+    const expected = method === "DELETE" && suffix === "" ? 200 : 404;
+    assert.equal((await api(method, `questions/${q.id}${suffix}`, body, bob)).status, expected, method + suffix);
   }
-  assert.equal((await api("DELETE", `questions/${q.id}/answers/${a.id}`)).status, 404, "question author cannot delete somebody else's answer");
+  assert.equal((await api("GET", `questions/${q.id}`)).data.item.id, q.id, "an unowned delete must preserve the question");
+  assert.equal((await api("DELETE", `questions/${q.id}/answers/${a.id}`)).status, 200);
+  assert.equal((await api("GET", `questions/${q.id}`)).data.answers[0].id, a.id, "question author cannot delete somebody else's answer");
   assert.equal((await api("DELETE", `questions/${q.id}/answers/${a.id}`, undefined, bob)).status, 200);
+  assert.equal((await api("GET", `questions/${q.id}`)).data.answers.length, 0);
   assert.equal((await api("GET", `questions/${q.id}`, undefined, bob)).data.item.isMine, false);
 });
 
@@ -239,7 +244,8 @@ test("answer retries are idempotent and cannot retarget the same request ID to a
   const [a1, a2] = await Promise.all([api("POST", `questions/${q1.id}/answers`, payload, bob), api("POST", `questions/${q1.id}/answers`, payload, bob)]);
   assert.equal(a1.data.item.id, a2.data.item.id); assert.equal(db.count("answers"), 1);
   assert.equal((await api("POST", `questions/${q2.id}/answers`, payload, bob)).status, 409);
-  assert.equal((await api("DELETE", `questions/${q2.id}/answers/${a1.data.item.id}`, undefined, bob)).status, 404);
+  assert.equal((await api("DELETE", `questions/${q2.id}/answers/${a1.data.item.id}`, undefined, bob)).status, 200);
+  assert.equal((await api("GET", `questions/${q1.id}`)).data.answers[0].id, a1.data.item.id, "a different parent must not delete the answer");
 });
 
 test("search escaping and state/owner filters return actual matching posts", async t => {
@@ -316,4 +322,194 @@ test("cross-origin, malformed/oversized JSON, and unavailable storage fail safel
   assert.equal(response.code, "STORAGE_UNAVAILABLE");
   assert.equal(JSON.stringify(response).includes("SELECT"), false);
   assert.equal(db.count("shoes"), 0);
+});
+
+test("search finds chosen shoes and follow-ups while keeping literal matching and filters", async t => {
+  const { api } = fixture(t);
+  const mine = (await api("POST", "questions", question())).data.item;
+  await api("PUT", `questions/${mine.id}/choice`, { brand: "완주 브랜드", model: "최종_러너100%", size: 275 });
+  await api("PUT", `questions/${mine.id}/review`, review({ body: "비오는노면에서 신었을 때 미끄러짐과 발볼 느낌을 기록했어요." }));
+  const other = (await api("POST", "questions", question({ width: "narrow", purpose: "race" }), bob)).data.item;
+  await api("PUT", `questions/${other.id}/choice`, { brand: "완주 브랜드", model: "최종X러너100Y", size: 270 }, bob);
+
+  const find = async (query, extra = "") => (await api("GET", `questions?q=${encodeURIComponent(query)}${extra}`)).data;
+  assert.deepEqual((await find("최종_러너100%")).items.map(item => item.id), [mine.id]);
+  assert.equal((await find("%")).total, 1, "a literal percent must not match the other shoe");
+  assert.equal((await find("_")).total, 1, "a literal underscore must not act as a wildcard");
+  assert.equal((await find("비오는노면")).items[0].id, mine.id);
+  assert.equal((await find("완주 브랜드")).total, 2);
+  assert.deepEqual((await find("완주 브랜드", "&mine=1&status=reviewed&width=wide&purpose=daily")).items.map(item => item.id), [mine.id]);
+  assert.equal((await find("완주 브랜드", "&mine=1&status=chosen")).total, 0);
+  assert.equal((await find("완주 브랜드", "&status=chosen&width=narrow")).items[0].id, other.id);
+});
+
+test("deletion retries do not reveal existence or delete another owner's or question's records", async t => {
+  const { db, api } = fixture(t);
+  const s = (await api("POST", "shoes", shoe())).data.item;
+  const q = (await api("POST", "questions", question())).data.item;
+  const otherQuestion = (await api("POST", "questions", question())).data.item;
+  const a = (await api("POST", `questions/${q.id}/answers`, answer(), bob)).data.item;
+
+  for (const [path, user, missingPath] of [
+    [`shoes/${s.id}`, bob, `shoes/${crypto.randomUUID()}`],
+    [`questions/${q.id}`, bob, `questions/${crypto.randomUUID()}`],
+    [`questions/${q.id}/answers/${a.id}`, alice, `questions/${q.id}/answers/${crypto.randomUUID()}`],
+    [`questions/${otherQuestion.id}/answers/${a.id}`, bob, `questions/${otherQuestion.id}/answers/${crypto.randomUUID()}`],
+  ]) {
+    const denied = await api("DELETE", path, undefined, user);
+    const missing = await api("DELETE", missingPath, undefined, user);
+    assert.equal(denied.status, 200);
+    assert.equal(missing.status, denied.status);
+    assert.deepEqual(denied.data, { ok: true });
+    assert.deepEqual(missing.data, denied.data);
+  }
+  assert.equal(db.count("shoes"), 1);
+  assert.equal(db.count("questions"), 2);
+  assert.equal(db.count("answers"), 1);
+
+  for (const [path, owner] of [[`shoes/${s.id}`, alice], [`questions/${q.id}/answers/${a.id}`, bob], [`questions/${q.id}`, alice]]) {
+    assert.equal((await api("DELETE", path, undefined, owner)).status, 200);
+    // The first result may be lost in transit; repeat exactly the same request.
+    assert.deepEqual((await api("DELETE", path, undefined, owner)).data, { ok: true });
+    assert.equal((await api("DELETE", path, undefined, null)).status, 401);
+  }
+  assert.equal(db.count("shoes"), 0);
+  assert.equal(db.count("answers"), 0);
+  assert.equal(db.count("questions"), 1);
+  assert.equal((await api("GET", `questions/${otherQuestion.id}`)).status, 200);
+});
+
+test("identical review retries preserve the actual observation date, including nullable distance", async t => {
+  const { api } = fixture(t);
+  const q = (await api("POST", "questions", question())).data.item;
+  await api("PUT", `questions/${q.id}/choice`, chosen);
+  const payload = review({ distanceKm: null });
+  const original = (await api("PUT", `questions/${q.id}/review`, payload)).data.item;
+  const later = { context: { now: new Date("2026-12-18T06:00:00Z") } };
+  const retried = await api("PUT", `questions/${q.id}/review`, { ...payload, body: `  ${payload.body}  ` }, alice, later);
+  assert.equal(retried.status, 200);
+  assert.deepEqual(retried.data.item, original);
+  assert.equal(retried.data.item.daysUsed, 0);
+  const changed = await api("PUT", `questions/${q.id}/review`, { ...payload, distanceKm: 0 }, alice, later);
+  assert.equal(changed.data.item.distanceKm, 0, "null and a measured zero are different observations");
+  assert.equal(changed.data.item.daysUsed, 30);
+  assert.notEqual(changed.data.item.updatedAt, original.updatedAt);
+  assert.equal(changed.data.item.createdAt, original.createdAt);
+});
+
+test("create retries reject a changed payload instead of silently reporting the old content as saved", async t => {
+  const { db, api } = fixture(t);
+  const shoePayload = shoe({ requestFingerprint: "untrusted-client-value" });
+  const s = (await api("POST", "shoes", shoePayload)).data.item;
+  const questionPayload = question({ referenceShoeId: s.id });
+  const q = (await api("POST", "questions", questionPayload)).data.item;
+  const answerPayload = answer({ referenceShoeId: s.id });
+  const a = (await api("POST", `questions/${q.id}/answers`, answerPayload)).data.item;
+  for (const [path, payload] of [
+    ["shoes", { ...shoePayload, memo: "응답 유실 후 새로 고친 메모" }],
+    ["questions", { ...questionPayload, body: "응답 유실 이후 질문 내용을 새롭게 수정했어요." }],
+    ["questions", { ...questionPayload, referenceShoeId: null }],
+    [`questions/${q.id}/answers`, { ...answerPayload, body: "응답 유실 후에 바꾼 다른 답변의 내용입니다." }],
+    [`questions/${q.id}/answers`, { ...answerPayload, referenceShoeId: null }],
+  ]) {
+    const result = await api("POST", path, payload);
+    assert.equal(result.status, 409, path);
+    assert.equal(result.data.code, "REQUEST_ID_CONFLICT", path);
+  }
+  assert.equal((await api("POST", "shoes", { ...shoePayload, brand: ` ${shoePayload.brand} ` })).data.item.id, s.id, "normalized whitespace is the same input");
+  const detail = (await api("GET", `questions/${q.id}`)).data;
+  assert.equal(detail.item.body, questionPayload.body);
+  assert.equal(detail.answers[0].body, answerPayload.body);
+  assert.equal(detail.answers[0].id, a.id);
+  assert.equal((await api("GET", "shoes")).data.items[0].memo, shoePayload.memo);
+  for (const table of ["shoes", "questions", "answers"]) {
+    assert.equal(db.count(table), 1);
+    assert.match(db.sqlite.prepare(`SELECT request_fingerprint FROM ${table}`).get().request_fingerprint, /^[a-f0-9]{64}$/);
+  }
+  for (const payload of [s, q, a, detail]) assert.equal(JSON.stringify(payload).includes("fingerprint"), false, "fingerprints are not an API field");
+});
+
+test("original create retries remain valid after edits, nickname changes and reference-shoe deletion", async t => {
+  const { db, api } = fixture(t);
+  const shoePayload = shoe();
+  const s = (await api("POST", "shoes", shoePayload)).data.item;
+  const questionPayload = question({ referenceShoeId: s.id });
+  const q = (await api("POST", "questions", questionPayload)).data.item;
+  const answerPayload = answer({ referenceShoeId: s.id });
+  const a = (await api("POST", `questions/${q.id}/answers`, answerPayload)).data.item;
+  await api("PATCH", `shoes/${s.id}`, shoe({ model: "나중에 고친 모델명", size: 280 }));
+  await api("PATCH", `questions/${q.id}`, question({ body: "질문을 등록한 뒤에 내용에 설명을 추가했어요." }));
+  await api("PATCH", "session", { nickname: "바뀐닉네임" });
+  const shoeRetry = await api("POST", "shoes", shoePayload);
+  assert.equal(shoeRetry.status, 201);
+  assert.equal(shoeRetry.data.item.id, s.id);
+  assert.equal(shoeRetry.data.item.model, "나중에 고친 모델명", "a retry must not overwrite a later edit");
+  await api("DELETE", `shoes/${s.id}`);
+  const questionRetry = await api("POST", "questions", questionPayload);
+  assert.equal(questionRetry.status, 201);
+  assert.equal(questionRetry.data.item.id, q.id);
+  assert.equal(questionRetry.data.item.body, "질문을 등록한 뒤에 내용에 설명을 추가했어요.");
+  assert.equal(questionRetry.data.item.reference.model, shoePayload.model);
+  const answerRetry = await api("POST", `questions/${q.id}/answers`, answerPayload);
+  assert.equal(answerRetry.status, 201);
+  assert.equal(answerRetry.data.item.id, a.id);
+  assert.equal(answerRetry.data.item.reference.model, shoePayload.model);
+  assert.equal(db.count("questions"), 1);
+  assert.equal(db.count("answers"), 1);
+});
+
+test("competing different create payloads keep one winner and explicitly reject the other", async t => {
+  const { db, api } = fixture(t);
+  const s = shoe();
+  const q = question();
+  const answerQuestion = (await api("POST", "questions", question())).data.item;
+  const a = answer();
+  for (const [path, original, changed] of [
+    ["shoes", s, { ...s, model: "다른 동시 요청 모델" }],
+    ["questions", q, { ...q, title: "동시에 보낸 다른 질문 제목이에요" }],
+    [`questions/${answerQuestion.id}/answers`, a, { ...a, body: "동시에 보낸 내용이 다른 두 번째 답변입니다." }],
+  ]) {
+    const results = await Promise.all([api("POST", path, original), api("POST", path, changed)]);
+    assert.deepEqual(results.map(result => result.status).sort(), [201, 409]);
+    assert.equal(results.find(result => result.status === 409).data.code, "REQUEST_ID_CONFLICT");
+  }
+  assert.equal(db.count("shoes"), 1);
+  assert.equal(db.count("questions"), 2);
+  assert.equal(db.count("answers"), 1);
+});
+
+test("additive request fingerprints preserve legacy rows and do not invent their original input", async t => {
+  const { db, api } = fixture(t);
+  const sPayload = shoe();
+  const s = (await api("POST", "shoes", sPayload)).data.item;
+  const qPayload = question({ referenceShoeId: s.id });
+  const q = (await api("POST", "questions", qPayload)).data.item;
+  const aPayload = answer({ referenceShoeId: s.id });
+  const a = (await api("POST", `questions/${q.id}/answers`, aPayload)).data.item;
+  // Simulate pre-migration rows, whose original normalized input is no longer recoverable.
+  for (const table of ["shoes", "questions", "answers"]) db.sqlite.prepare(`UPDATE ${table} SET request_fingerprint = NULL`).run();
+  assert.equal((await api("POST", "shoes", { ...sPayload, model: "과거 입력을 알 수 없는 재시도" })).data.item.id, s.id);
+  await api("DELETE", `shoes/${s.id}`);
+  assert.equal((await api("POST", "questions", qPayload)).data.item.id, q.id);
+  assert.equal((await api("POST", `questions/${q.id}/answers`, aPayload)).data.item.id, a.id);
+  assert.equal(db.sqlite.prepare("SELECT request_fingerprint FROM questions WHERE id = ?").get(q.id).request_fingerprint, null);
+  assert.equal(db.sqlite.prepare("SELECT request_fingerprint FROM answers WHERE id = ?").get(a.id).request_fingerprint, null);
+
+  const legacy = new DatabaseSync(":memory:");
+  t.after(() => legacy.close());
+  legacy.exec("PRAGMA foreign_keys = ON");
+  legacy.exec(migrations[0]);
+  legacy.prepare("INSERT INTO shoes (id, user_id, request_id, brand, model, size, width, fit, purpose, memo, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(s.id, alice.userId, sPayload.requestId, sPayload.brand, sPayload.model, 270, "wide", "good", "daily", "이전 메모 보존", now.toISOString());
+  legacy.prepare("INSERT INTO questions (id, user_id, request_id, title, body, purpose, width, nickname, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(q.id, alice.userId, qPayload.requestId, qPayload.title, "이전 질문 내용 보존", "daily", "wide", "러너", now.toISOString());
+  legacy.prepare("INSERT INTO answers (id, question_id, user_id, request_id, body, nickname, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .run(a.id, q.id, alice.userId, aPayload.requestId, "이전 답변 내용 보존", "러너", now.toISOString());
+  for (const migration of migrations.slice(1)) legacy.exec(migration);
+  const preserved = legacy.prepare("SELECT id, memo, request_fingerprint FROM shoes").get();
+  assert.deepEqual({ ...preserved }, { id: s.id, memo: "이전 메모 보존", request_fingerprint: null });
+  for (const [table, id, body] of [["questions", q.id, "이전 질문 내용 보존"], ["answers", a.id, "이전 답변 내용 보존"]]) {
+    const row = legacy.prepare(`SELECT id, body, request_fingerprint FROM ${table}`).get();
+    assert.deepEqual({ ...row }, { id, body, request_fingerprint: null });
+  }
 });

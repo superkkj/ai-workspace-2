@@ -1,5 +1,33 @@
 # 검사 명령과 결과
 
+## 핏로그 첫 사용 개선 — 2026-11-18
+
+기준 GitHub 커밋은 b489dd724b111853711506b69a7fd417a25d4652이며 작업 브랜치 feature/fitlog-20261118과 Draft PR #1을 유지한다. 앱 실행 위치는 apps/fitlog, Node 24.22.1이다.
+
+| 검사 | 실제 실행/관찰 | 결과와 범위 |
+| --- | --- | --- |
+| 최종 자동 검사 | npm test → node --test tests/*.test.mjs | **45/45 성공**. API 23, 초안·전송 helper 17, 탐색 5 |
+| 타입 | npm run typecheck | 성공, 전체 TypeScript 오류 0개 |
+| 배포 빌드 | Sites source workflow에서 build-site.mjs → npm run build | 성공. 동일 검증 소스에서 Worker/client 아카이브 생성 |
+| DB 변경 | npm run db:generate + 생성 SQL 읽기 | answers/questions/shoes에 nullable request_fingerprint 열 3개 추가. 기존0000 불변, 기존행 유지 검사 통과 |
+| 로컬 D1 | 새0001 SQL을 --local --persist-to .wrangler/state로 한 번 실행 | 성공, SQL 3개. 기존0000 재실행 및 DB 초기화 없음 |
+| 비공개 배포 | save_version_and_deploy_private | 성공. source572fc602e1423f3ea60687941053577b7cf1f25b / deployment appgdep_6afd6a6aa8888191bba3366d20e7fb31 / succeeded |
+| 실제 로그인 | ChatGPT 로그인 시작→사용자가 선택한 Google→보안 입력 | 시작 권한은 명시적으로 받음. 이후 Google이 비활동으로 세션 종료를 표시. 로그인 성공·운영 DB 쓰기는 미확인 |
+| 로컬 화면 | sites-preview start/status 및 Cloud Browser | 처음 연결 거절, 종료된 preview 확인 뒤 재시작. 실패 탭 재연결에서 URL 정책 제한. 우회하지 않음 |
+| 데스크톱/모바일 사용 | 핵심 CRUD, 가상 키보드, 화면 배치 | **미검증**. 코드상 반응형 대응과 helper 검사를 시각·실계정 검증으로 표현하지 않음 |
+| GitHub 개선본 | 작업 브랜치·PR 갱신 및 새 CI | 이번 개선 커밋의 업로드/원격 CI 결과는 아래에서 갱신 예정 |
+
+### 검사한 중요한 조건
+
+- 생성은 저장됐지만 응답만 유실된 뒤 같은 ID·같은 내용으로 확인하며, 중간 인증 거절이 이전 저장 실패를 의미한다고 취급하지 않음.
+- 같은 ID의 다른 입력은 명시적 충돌로 처리. 원본 수정·기준 신발 삭제 뒤 원래 요청의 재시도는 유지.
+- 미확정 수정은 최신 기록을 읽어 일치할 때만 성공으로 확인하고, 바뀌거나 삭제된 기록에 쓰지 않음.
+- 초안은 사용자·폼·대상별 분리. 저장소 거절·용량 오류·늦은 응답·명시적 초안 정리와 충돌 복구를 확인.
+- 같은 후기 재전송의 관찰일 보존, 삭제 멱등성·타인 자료 보존·존재 여부 응답 동일화, 최종 선택과 후기 검색.
+- 기존/새 URL 호환, 탭·예시/실제·검색·필터·선택 글의 직렬화와 복원. 실제 브라우저 히스토리를 조작한 검사와 구분.
+
+독립 검토는 별도 ChatGPT 작업자가 수행했다. 운영 테스트 자료는 생성하지 않았고 테스트는 메모리 SQLite와 가상 입력을 사용했다. 실제 두 계정 참여와 일반적인 동시 최초 수정의 서버 버전 잠금은 확인/구현 범위 밖이다.
+
 ## 핏로그 첫 버전 — 2026-11-18
 
 실행 위치: apps/fitlog. Node 24.22.1, npm, Vinext 1.0.0-beta.5, Vite 8.0.13, Wrangler 4.92.0. 아래 명령은 package.json 또는 제공된 Sites 실행 가이드에서 확인했다.

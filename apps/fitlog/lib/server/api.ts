@@ -11,11 +11,11 @@ export interface ApiContext {
 }
 
 interface ShoeRow {
-  id: string; user_id: string; request_id: string; brand: string; model: string;
+  id: string; user_id: string; request_id: string; request_fingerprint: string | null; brand: string; model: string;
   size: number; width: Width; fit: Fit; purpose: Purpose; memo: string; created_at: string;
 }
 interface QuestionRow {
-  id: string; user_id: string; request_id: string; title: string; body: string;
+  id: string; user_id: string; request_id: string; request_fingerprint: string | null; title: string; body: string;
   purpose: Purpose; width: Width; target_model: string; reference_json: string | null;
   nickname: string; hidden: number; created_at: string; reply_count: number;
   c_brand: string | null; c_model: string | null; c_size: number | null; c_created_at: string | null;
@@ -23,7 +23,7 @@ interface QuestionRow {
   r_first_used_at: string | null; r_created_at: string | null; r_updated_at: string | null;
 }
 interface AnswerRow {
-  id: string; question_id: string; user_id: string; request_id: string; body: string;
+  id: string; question_id: string; user_id: string; request_id: string; request_fingerprint: string | null; body: string;
   nickname: string; reference_json: string | null; created_at: string; hidden: number;
 }
 interface ChoiceRow { question_id: string; brand: string; model: string; size: number; created_at: string }
@@ -51,6 +51,20 @@ function shoeView(row: ShoeRow): Shoe {
 function choiceView(row: ChoiceRow): Choice { return { brand: row.brand, model: row.model, size: row.size, createdAt: row.created_at }; }
 function reviewView(row: ReviewRow): Followup {
   return { body: row.body, fit: row.fit, distanceKm: row.distance_km, firstUsedAt: row.first_used_at, daysUsed: elapsedDays(row.first_used_at, new Date(row.updated_at)), createdAt: row.created_at, updatedAt: row.updated_at };
+}
+
+// Hash only the normalized original input, never mutable records or derived snapshots.
+// This stays valid when an item is edited or its reference shoe is later removed.
+async function requestFingerprint(input: object): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(input)));
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function verifyRequestFingerprint(saved: string | null, requested: string): void {
+  // Legacy rows have no recoverable original input. Do not invent a hash from their current data.
+  if (saved !== null && saved !== requested) {
+    throw new ApiError(409, "같은 저장 요청에 다른 내용이 들어왔어요. 먼저 이전 저장 결과를 확인해 주세요.", "REQUEST_ID_CONFLICT");
+  }
 }
 
 export function isModerator(user: Identity | null, configuredIds?: string): boolean {
@@ -112,11 +126,13 @@ class Service {
     const userId = this.auth();
     const data = shoeInput(input);
     const requestId = uuid(input.requestId);
-    await this.db.prepare(`INSERT INTO shoes (id, user_id, request_id, brand, model, size, width, fit, purpose, memo, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, request_id) DO NOTHING`)
-      .bind(crypto.randomUUID(), userId, requestId, data.brand, data.model, data.size, data.width, data.fit, data.purpose, data.memo, this.timestamp()).run();
+    const fingerprint = await requestFingerprint(data);
+    await this.db.prepare(`INSERT INTO shoes (id, user_id, request_id, request_fingerprint, brand, model, size, width, fit, purpose, memo, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, request_id) DO NOTHING`)
+      .bind(crypto.randomUUID(), userId, requestId, fingerprint, data.brand, data.model, data.size, data.width, data.fit, data.purpose, data.memo, this.timestamp()).run();
     const row = await this.db.prepare("SELECT * FROM shoes WHERE user_id = ? AND request_id = ?").bind(userId, requestId).first<ShoeRow>();
     if (!row) throw new Error("shoe_create_missing");
+    verifyRequestFingerprint(row.request_fingerprint, fingerprint);
     return { item: shoeView(row) };
   }
   async updateShoe(id: string, input: Input): Promise<{ item: Shoe }> {
@@ -127,8 +143,9 @@ class Service {
     return { item: shoeView(await this.ownedShoe(id)) };
   }
   async deleteShoe(id: string): Promise<{ ok: true }> {
-    await this.ownedShoe(id);
-    await this.db.prepare("DELETE FROM shoes WHERE id = ? AND user_id = ?").bind(id, this.auth()).run();
+    const userId = this.auth();
+    // Missing and unowned records share the same response; ownership stays in the DELETE.
+    await this.db.prepare("DELETE FROM shoes WHERE id = ? AND user_id = ?").bind(id, userId).run();
     return { ok: true };
   }
 
@@ -161,8 +178,8 @@ class Service {
     const q = text(url.searchParams.get("q") ?? "", "검색어", 0, 100);
     if (q) {
       const pattern = `%${q.replace(/[\\%_]/g, "\\$&")}%`;
-      conditions.push("(q.title LIKE ? ESCAPE '\\' OR q.body LIKE ? ESCAPE '\\' OR q.target_model LIKE ? ESCAPE '\\' OR COALESCE(q.reference_json, '') LIKE ? ESCAPE '\\')");
-      values.push(pattern, pattern, pattern, pattern);
+      conditions.push("(q.title LIKE ? ESCAPE '\\' OR q.body LIKE ? ESCAPE '\\' OR q.target_model LIKE ? ESCAPE '\\' OR COALESCE(q.reference_json, '') LIKE ? ESCAPE '\\' OR COALESCE(c.brand, '') LIKE ? ESCAPE '\\' OR COALESCE(c.model, '') LIKE ? ESCAPE '\\' OR COALESCE(r.body, '') LIKE ? ESCAPE '\\')");
+      values.push(pattern, pattern, pattern, pattern, pattern, pattern, pattern);
     }
     const selectedPurpose = url.searchParams.get("purpose");
     if (selectedPurpose && selectedPurpose !== "all") { conditions.push("q.purpose = ?"); values.push(purpose(selectedPurpose)); }
@@ -190,15 +207,21 @@ class Service {
     const userId = this.auth();
     const d = questionInput(input);
     const requestId = uuid(input.requestId);
-    const existing = await this.db.prepare("SELECT id FROM questions WHERE user_id = ? AND request_id = ?").bind(userId, requestId).first<{ id: string }>();
-    if (existing) return { item: this.questionView(await this.visibleQuestion(existing.id)) };
-    const snapshot = await this.shoeSnapshot(input.referenceShoeId);
+    const referenceShoeId = optionalShoeId(input.referenceShoeId);
+    const fingerprint = await requestFingerprint({ ...d, referenceShoeId });
+    const existing = await this.db.prepare("SELECT id, request_fingerprint FROM questions WHERE user_id = ? AND request_id = ?").bind(userId, requestId).first<{ id: string; request_fingerprint: string | null }>();
+    if (existing) {
+      verifyRequestFingerprint(existing.request_fingerprint, fingerprint);
+      return { item: this.questionView(await this.visibleQuestion(existing.id)) };
+    }
+    const snapshot = await this.shoeSnapshot(referenceShoeId);
     const nickname = await this.nickname();
-    await this.db.prepare(`INSERT INTO questions (id, user_id, request_id, title, body, purpose, width, target_model, reference_json, nickname, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, request_id) DO NOTHING`)
-      .bind(crypto.randomUUID(), userId, requestId, d.title, d.body, d.purpose, d.width, d.targetModel, snapshot, nickname, this.timestamp()).run();
-    const row = await this.db.prepare("SELECT id FROM questions WHERE user_id = ? AND request_id = ?").bind(userId, requestId).first<{ id: string }>();
+    await this.db.prepare(`INSERT INTO questions (id, user_id, request_id, request_fingerprint, title, body, purpose, width, target_model, reference_json, nickname, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, request_id) DO NOTHING`)
+      .bind(crypto.randomUUID(), userId, requestId, fingerprint, d.title, d.body, d.purpose, d.width, d.targetModel, snapshot, nickname, this.timestamp()).run();
+    const row = await this.db.prepare("SELECT id, request_fingerprint FROM questions WHERE user_id = ? AND request_id = ?").bind(userId, requestId).first<{ id: string; request_fingerprint: string | null }>();
     if (!row) throw new Error("question_create_missing");
+    verifyRequestFingerprint(row.request_fingerprint, fingerprint);
     return { item: this.questionView(await this.visibleQuestion(row.id)) };
   }
   async updateQuestion(id: string, input: Input): Promise<{ item: Question }> {
@@ -210,9 +233,9 @@ class Service {
     return { item: this.questionView(await this.visibleQuestion(id)) };
   }
   async deleteQuestion(id: string): Promise<{ ok: true }> {
-    await this.ownedQuestion(id);
+    const userId = this.auth();
     // D1 foreign keys cascade answers, choices, reviews, and reports in one atomic statement.
-    await this.db.prepare("DELETE FROM questions WHERE id = ? AND user_id = ?").bind(id, this.auth()).run();
+    await this.db.prepare("DELETE FROM questions WHERE id = ? AND user_id = ?").bind(id, userId).run();
     return { ok: true };
   }
   async createAnswer(questionId: string, input: Input): Promise<{ item: Answer }> {
@@ -220,24 +243,26 @@ class Service {
     await this.visibleQuestion(questionId);
     const body = text(input.body, "답변", 10, 3000);
     const requestId = uuid(input.requestId);
+    const referenceShoeId = optionalShoeId(input.referenceShoeId);
+    const fingerprint = await requestFingerprint({ questionId, body, referenceShoeId });
     const existing = await this.db.prepare("SELECT * FROM answers WHERE user_id = ? AND request_id = ?").bind(userId, requestId).first<AnswerRow>();
     if (existing) {
-      if (existing.question_id !== questionId) throw new ApiError(409, "이미 다른 질문에서 사용한 요청이에요. 새 답변을 작성해 주세요.", "REQUEST_CONFLICT");
+      if (existing.question_id !== questionId) throw new ApiError(409, "이미 다른 질문에서 사용한 요청이에요. 새 답변을 작성해 주세요.", "REQUEST_ID_CONFLICT");
+      verifyRequestFingerprint(existing.request_fingerprint, fingerprint);
       return { item: this.answerView(existing) };
     }
-    const snapshot = await this.shoeSnapshot(input.referenceShoeId);
-    await this.db.prepare(`INSERT INTO answers (id, question_id, user_id, request_id, body, reference_json, nickname, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, request_id) DO NOTHING`)
-      .bind(crypto.randomUUID(), questionId, userId, requestId, body, snapshot, await this.nickname(), this.timestamp()).run();
+    const snapshot = await this.shoeSnapshot(referenceShoeId);
+    await this.db.prepare(`INSERT INTO answers (id, question_id, user_id, request_id, request_fingerprint, body, reference_json, nickname, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(user_id, request_id) DO NOTHING`)
+      .bind(crypto.randomUUID(), questionId, userId, requestId, fingerprint, body, snapshot, await this.nickname(), this.timestamp()).run();
     const row = await this.db.prepare("SELECT * FROM answers WHERE user_id = ? AND request_id = ?").bind(userId, requestId).first<AnswerRow>();
     if (!row) throw new Error("answer_create_missing");
-    if (row.question_id !== questionId) throw new ApiError(409, "이미 다른 질문에서 사용한 요청이에요.", "REQUEST_CONFLICT");
+    if (row.question_id !== questionId) throw new ApiError(409, "이미 다른 질문에서 사용한 요청이에요.", "REQUEST_ID_CONFLICT");
+    verifyRequestFingerprint(row.request_fingerprint, fingerprint);
     return { item: this.answerView(row) };
   }
   async deleteAnswer(questionId: string, answerId: string): Promise<{ ok: true }> {
     const userId = this.auth();
-    const row = await this.db.prepare("SELECT id FROM answers WHERE id = ? AND question_id = ? AND user_id = ?").bind(answerId, questionId, userId).first<{ id: string }>();
-    if (!row) throw new ApiError(404, "삭제할 답변을 찾지 못했어요.", "NOT_FOUND");
     await this.db.prepare("DELETE FROM answers WHERE id = ? AND question_id = ? AND user_id = ?").bind(answerId, questionId, userId).run();
     return { ok: true };
   }
@@ -267,10 +292,12 @@ class Service {
     const saved = await this.db.prepare(`INSERT INTO reviews (question_id, body, fit, distance_km, first_used_at, created_at, updated_at)
       SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM choices WHERE question_id = ?)
       ON CONFLICT(question_id) DO UPDATE SET body = excluded.body, fit = excluded.fit, distance_km = excluded.distance_km,
-      first_used_at = excluded.first_used_at, updated_at = excluded.updated_at`)
+      first_used_at = excluded.first_used_at, updated_at = excluded.updated_at
+      WHERE reviews.body IS NOT excluded.body OR reviews.fit IS NOT excluded.fit
+      OR reviews.distance_km IS NOT excluded.distance_km OR reviews.first_used_at IS NOT excluded.first_used_at`)
       .bind(questionId, body, feeling, km, startedAt, this.timestamp(), this.timestamp(), questionId).run();
-    if (!saved.meta.changes) throw new ApiError(409, "선택한 신발을 먼저 기록해 주세요.", "CHOICE_REQUIRED");
     const row = await this.db.prepare("SELECT * FROM reviews WHERE question_id = ?").bind(questionId).first<ReviewRow>();
+    if (!saved.meta.changes && !row) throw new ApiError(409, "선택한 신발을 먼저 기록해 주세요.", "CHOICE_REQUIRED");
     if (!row) throw new Error("review_missing");
     return { item: reviewView(row) };
   }

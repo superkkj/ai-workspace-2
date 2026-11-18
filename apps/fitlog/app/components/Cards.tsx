@@ -20,6 +20,7 @@ export function QuestionCard({ question, example = false, onClick }: { question:
     <h3>{question.title}<ArrowUpRight size={21} className="card-arrow" /></h3>
     <p className="question-excerpt">{question.body.split("\n")[0]}</p>
     {question.reference && <div className="card-reference"><Footprints size={15} /><span>{question.reference.brand} {question.reference.model}</span><b>{question.reference.size}mm</b></div>}
+    {question.choice && <div className="card-choice-line"><span>선택한 신발</span><strong>{question.choice.brand} {question.choice.model}</strong><span>{question.choice.size}mm</span></div>}
     {question.review && <div className="card-review-line"><CheckCheck size={15} /><span>선택 이후의 착용 후기가 연결됐어요.</span></div>}
     <div className="question-card-bottom"><span className="author-inline"><span className={`avatar avatar-${question.status}`}>{question.nickname.slice(0, 1) || "R"}</span>{question.nickname}<span className="subtle-dot">·</span><span className="muted">{example ? "흐름 보기" : humanDate(question.createdAt)}</span></span><span className="reply-count"><MessageCircle size={16} />{question.replyCount}<span className="sr-only">개의 답변</span></span></div>
   </button>;
