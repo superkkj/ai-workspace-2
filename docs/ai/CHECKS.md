@@ -1,5 +1,16 @@
 # 검사 명령과 결과
 
+## 다중 창 동시 수정 보호 — 2026-11-19
+
+- 작업 저장소: `superkkj/ai-workspace-2`, 브랜치 `feature/fitlog-20261118`, 코드 커밋 `c16169e8e21af70a9417ec73a4a1a3b42d91b5c6`.
+- `PATCH shoes`, `PATCH questions`, `PUT choice`, `PUT review`: 최신 값과 편집 시작 시점 값(`expected`)이 일치할 때만 단일 SQL 문에서 저장. 일치하지 않으면 `409 REMOTE_RECORD_CHANGED`를 반환. 새 폼에서 expected 전달. 구버전 요청은 호환 처리하므로 완전한 서버 강제 버전 잠금이 아님.
+- [GitHub Actions 44466265260](https://github.com/superkkj/ai-workspace-2/actions/runs/44466265260): `completed / success`. 실제 원격 로그에 **47 tests, 47 pass, 0 fail**, TypeScript 검사 통과와 Vinext 빌드 완료가 표시됨. 신규 SQLite/API 회귀 검사 2개 포함.
+- `npm ci`/`npm run typecheck`/`npm test`/`npm run build`: GitHub CI 환경에서 성공. 이번 턴 컨테이너에서는 저장소 clone이 네트워크 DNS 제한으로 실패해 독립 로컬 실행은 미실행.
+- **미실행:** 비공개 Sites 재배포, 로그인 후 운영 DB CRUD, 실사용 다계정, 실제 데스크톱/모바일 브라우저 화면. 이번 턴 도구 환경에 Sites/브라우저 기능이 없어 진행할 수 없었음. 기존 URL은 마지막 성공 배포를 유지하며 새 코드가 자동 반영되었다고 기록하지 않음.
+- **미확인:** 같은 탭 밖의 초안 동기화, 구버전 클라이언트의 조건 없는 수정 경로, ABA(값이 바뀌었다가 원상복구)와 실제 운영 환경에서의 동시 수정.
+
+## 핏로그 첫 사용 개선 — 2026-11-18
+
 ## 핏로그 첫 사용 개선 — 2026-11-18
 
 기준 GitHub 커밋은 b489dd724b111853711506b69a7fd417a25d4652이며 작업 브랜치 feature/fitlog-20261118과 Draft PR #1을 유지한다. 앱 실행 위치는 apps/fitlog, Node 24.22.1이다.

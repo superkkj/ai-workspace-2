@@ -55,7 +55,18 @@ Sites Vinext/React + Cloudflare D1. 로그인은 Sites의 ChatGPT 인증을 사�
 - 미확정 PATCH/PUT은 현재 서버 값을 조회해 보낸 내용과 일치할 때만 저장 완료를 확인한다. 다르면 `REMOTE_RECORD_CHANGED`로 안내하고 자동 덮어쓰기를 하지 않는다. 충돌 초안은 사용자가 저장된 기록을 확인했다고 명시적으로 확인한 뒤 로컬에서만 정리할 수 있다.
 - 주소의 탭·실제/예시 모드·검색·필터·선택한 글을 일관되게 복원한다. 기존 `?question=`과 `?example=` 주소도 유지한다.
 
-일반적인 두 창의 최초 수정 요청 사이에 서버 버전 잠금을 추가한 것은 아니다. 후속 개선의 우선순위는 실제 사용과 충돌 빈도를 확인해 정한다.
+## 2026-11-19 동시 편집 충돌 보호
+
+새 UI는 신발·질문 수정 시 편집 시작 당시의 `expected` 값(변경 가능한 필드 전부)을 함께 전송한다. 선택·후기는 현재 기록이 없으면 `expected: null`, 있으면 기존 필드를 포함한다(후기는 기존 `updatedAt`도 포함). 서버는 별도 읽기→쓰기 대신 단일 SQL INSERT/UPDATE에서 이전값과 비교한다. 둘째 탭이 오래된 기준으로 쓰려고 하면 `409 REMOTE_RECORD_CHANGED`를 보낸다.
+
+- `PATCH /api/shoes/:id`: expected `{brand,model,size,width,fit,purpose,memo}`.
+- `PATCH /api/questions/:id`: expected `{title,body,purpose,width,targetModel}`.
+- `PUT /api/questions/:id/choice`: expected `null | {brand,model,size}`.
+- `PUT /api/questions/:id/review`: expected `null | {body,fit,distanceKm,firstUsedAt,updatedAt}`.
+- 클라이언트가 409를 받으면 현재 초안을 계속 보관하고 사용자에게 최신 값을 확인하도록 안내한다. 충돌한 쓰기를 자동 재시도하지 않는다.
+- 구버전 클라이언트 호환용 `expected` 생략 요청은 여전히 허용한다. 따라서 이 변경만으로 모든 외부 클라이언트에 서버 버전 잠금이 강제되는 것은 아니다. 여러 창의 최초 편집에서 ABA 상황(중간 변경 뒤 동일 값 복구)까지 검출하는 독립 버전 카운터는 추가하지 않았다.
+- 데이터베이스 마이그레이션은 없다. 자동 SQLite/API 검사 2개를 추가했고 GitHub CI 47개 통과. 비공개 서비스에는 아직 재배포하지 못했다.
+
 
 ## 구현 분담
 
