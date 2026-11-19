@@ -60,6 +60,16 @@ async function requestFingerprint(input: object): Promise<string> {
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function expectedInput(value: unknown): Input {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new ApiError(400, "수정하기 전 기록 정보가 올바르지 않아요.", "INVALID_EXPECTED");
+  }
+  return value as Input;
+}
+function staleEdit(): never {
+  throw new ApiError(409, "다른 창에서 이미 수정된 기록이에요. 최신 내용을 확인한 뒤 다시 편집해 주세요.", "REMOTE_RECORD_CHANGED");
+}
+
 function verifyRequestFingerprint(saved: string | null, requested: string): void {
   // Legacy rows have no recoverable original input. Do not invent a hash from their current data.
   if (saved !== null && saved !== requested) {
@@ -138,8 +148,16 @@ class Service {
   async updateShoe(id: string, input: Input): Promise<{ item: Shoe }> {
     await this.ownedShoe(id);
     const d = shoeInput(input);
-    await this.db.prepare("UPDATE shoes SET brand = ?, model = ?, size = ?, width = ?, fit = ?, purpose = ?, memo = ? WHERE id = ? AND user_id = ?")
-      .bind(d.brand, d.model, d.size, d.width, d.fit, d.purpose, d.memo, id, this.auth()).run();
+    // New clients provide their edit baseline. The comparison must be in the UPDATE
+    // itself, not a separate SELECT, or two simultaneous tabs can both pass.
+    const expected = input.expected === undefined ? null : shoeInput(expectedInput(input.expected));
+    const baselineSql = expected
+      ? " AND brand = ? AND model = ? AND size = ? AND width = ? AND fit = ? AND purpose = ? AND memo = ?"
+      : "";
+    const result = await this.db.prepare("UPDATE shoes SET brand = ?, model = ?, size = ?, width = ?, fit = ?, purpose = ?, memo = ? WHERE id = ? AND user_id = ?" + baselineSql)
+      .bind(d.brand, d.model, d.size, d.width, d.fit, d.purpose, d.memo, id, this.auth(),
+        ...(expected ? [expected.brand, expected.model, expected.size, expected.width, expected.fit, expected.purpose, expected.memo] : [])).run();
+    if (expected && !result.meta.changes) staleEdit();
     return { item: shoeView(await this.ownedShoe(id)) };
   }
   async deleteShoe(id: string): Promise<{ ok: true }> {
@@ -228,8 +246,14 @@ class Service {
     await this.ownedQuestion(id);
     await this.visibleQuestion(id);
     const d = questionInput(input);
-    await this.db.prepare("UPDATE questions SET title = ?, body = ?, purpose = ?, width = ?, target_model = ? WHERE id = ? AND user_id = ?")
-      .bind(d.title, d.body, d.purpose, d.width, d.targetModel, id, this.auth()).run();
+    const expected = input.expected === undefined ? null : questionInput(expectedInput(input.expected));
+    const baselineSql = expected
+      ? " AND title = ? AND body = ? AND purpose = ? AND width = ? AND target_model = ?"
+      : "";
+    const result = await this.db.prepare("UPDATE questions SET title = ?, body = ?, purpose = ?, width = ?, target_model = ? WHERE id = ? AND user_id = ? AND hidden = 0" + baselineSql)
+      .bind(d.title, d.body, d.purpose, d.width, d.targetModel, id, this.auth(),
+        ...(expected ? [expected.title, expected.body, expected.purpose, expected.width, expected.targetModel] : [])).run();
+    if (expected && !result.meta.changes) staleEdit();
     return { item: this.questionView(await this.visibleQuestion(id)) };
   }
   async deleteQuestion(id: string): Promise<{ ok: true }> {
@@ -272,12 +296,32 @@ class Service {
     const brand = text(input.brand, "브랜드", 1, 40);
     const model = text(input.model, "모델", 1, 80);
     const shoeSize = size(input.size);
-    const saved = await this.db.prepare(`INSERT INTO choices (question_id, brand, model, size, created_at)
-      SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM reviews WHERE question_id = ?)
-      ON CONFLICT(question_id) DO UPDATE SET brand = excluded.brand, model = excluded.model, size = excluded.size
-      WHERE NOT EXISTS (SELECT 1 FROM reviews WHERE question_id = excluded.question_id)`)
-      .bind(questionId, brand, model, shoeSize, this.timestamp(), questionId).run();
-    if (!saved.meta.changes) throw new ApiError(409, "착용 후기를 먼저 삭제한 뒤 선택한 신발을 바꿀 수 있어요.", "REVIEW_EXISTS");
+    let saved: D1Result;
+    if (Object.prototype.hasOwnProperty.call(input, "expected")) {
+      if (input.expected === null) {
+        saved = await this.db.prepare(`INSERT INTO choices (question_id, brand, model, size, created_at)
+          SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM reviews WHERE question_id = ?)
+          ON CONFLICT(question_id) DO NOTHING`).bind(questionId, brand, model, shoeSize, this.timestamp(), questionId).run();
+      } else {
+        const prior = expectedInput(input.expected);
+        const oldBrand = text(prior.brand, "기존 브랜드", 1, 40);
+        const oldModel = text(prior.model, "기존 모델", 1, 80);
+        const oldSize = size(prior.size);
+        saved = await this.db.prepare(`UPDATE choices SET brand = ?, model = ?, size = ?
+          WHERE question_id = ? AND brand = ? AND model = ? AND size = ?
+          AND NOT EXISTS (SELECT 1 FROM reviews WHERE question_id = ?)`)
+          .bind(brand, model, shoeSize, questionId, oldBrand, oldModel, oldSize, questionId).run();
+      }
+      if (!saved.meta.changes) staleEdit();
+    } else {
+      // Preserve compatibility for older clients; all current UI forms send expected.
+      saved = await this.db.prepare(`INSERT INTO choices (question_id, brand, model, size, created_at)
+        SELECT ?, ?, ?, ?, ? WHERE NOT EXISTS (SELECT 1 FROM reviews WHERE question_id = ?)
+        ON CONFLICT(question_id) DO UPDATE SET brand = excluded.brand, model = excluded.model, size = excluded.size
+        WHERE NOT EXISTS (SELECT 1 FROM reviews WHERE question_id = excluded.question_id)`)
+        .bind(questionId, brand, model, shoeSize, this.timestamp(), questionId).run();
+      if (!saved.meta.changes) throw new ApiError(409, "착용 후기를 먼저 삭제한 뒤 선택한 신발을 바꿀 수 있어요.", "REVIEW_EXISTS");
+    }
     const row = await this.db.prepare("SELECT * FROM choices WHERE question_id = ?").bind(questionId).first<ChoiceRow>();
     if (!row) throw new Error("choice_missing");
     return { item: choiceView(row) };
@@ -289,15 +333,41 @@ class Service {
     const feeling = fit(input.fit);
     const km = distance(input.distanceKm);
     const startedAt = firstUsedAt(input.firstUsedAt, this.now);
-    const saved = await this.db.prepare(`INSERT INTO reviews (question_id, body, fit, distance_km, first_used_at, created_at, updated_at)
-      SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM choices WHERE question_id = ?)
-      ON CONFLICT(question_id) DO UPDATE SET body = excluded.body, fit = excluded.fit, distance_km = excluded.distance_km,
-      first_used_at = excluded.first_used_at, updated_at = excluded.updated_at
-      WHERE reviews.body IS NOT excluded.body OR reviews.fit IS NOT excluded.fit
-      OR reviews.distance_km IS NOT excluded.distance_km OR reviews.first_used_at IS NOT excluded.first_used_at`)
-      .bind(questionId, body, feeling, km, startedAt, this.timestamp(), this.timestamp(), questionId).run();
+    let saved: D1Result;
+    const guarded = Object.prototype.hasOwnProperty.call(input, "expected");
+    if (guarded) {
+      if (input.expected === null) {
+        saved = await this.db.prepare(`INSERT INTO reviews (question_id, body, fit, distance_km, first_used_at, created_at, updated_at)
+          SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM choices WHERE question_id = ?)
+          ON CONFLICT(question_id) DO NOTHING`)
+          .bind(questionId, body, feeling, km, startedAt, this.timestamp(), this.timestamp(), questionId).run();
+      } else {
+        const prior = expectedInput(input.expected);
+        const oldBody = text(prior.body, "기존 후기", 10, 3000);
+        const oldFit = fit(prior.fit);
+        const oldKm = distance(prior.distanceKm);
+        const oldStarted = firstUsedAt(prior.firstUsedAt, this.now);
+        const oldUpdated = text(prior.updatedAt, "기존 수정 시각", 1, 64);
+        // Atomic comparison prevents a stale tab from overwriting a newer review.
+        saved = await this.db.prepare(`UPDATE reviews SET body = ?, fit = ?, distance_km = ?, first_used_at = ?,
+          updated_at = CASE WHEN body IS ? AND fit IS ? AND distance_km IS ? AND first_used_at IS ?
+            THEN updated_at ELSE ? END
+          WHERE question_id = ? AND body = ? AND fit = ? AND distance_km IS ? AND first_used_at = ? AND updated_at = ?`)
+          .bind(body, feeling, km, startedAt, body, feeling, km, startedAt, this.timestamp(),
+            questionId, oldBody, oldFit, oldKm, oldStarted, oldUpdated).run();
+      }
+      if (!saved.meta.changes) staleEdit();
+    } else {
+      saved = await this.db.prepare(`INSERT INTO reviews (question_id, body, fit, distance_km, first_used_at, created_at, updated_at)
+        SELECT ?, ?, ?, ?, ?, ?, ? WHERE EXISTS (SELECT 1 FROM choices WHERE question_id = ?)
+        ON CONFLICT(question_id) DO UPDATE SET body = excluded.body, fit = excluded.fit, distance_km = excluded.distance_km,
+        first_used_at = excluded.first_used_at, updated_at = excluded.updated_at
+        WHERE reviews.body IS NOT excluded.body OR reviews.fit IS NOT excluded.fit
+        OR reviews.distance_km IS NOT excluded.distance_km OR reviews.first_used_at IS NOT excluded.first_used_at`)
+        .bind(questionId, body, feeling, km, startedAt, this.timestamp(), this.timestamp(), questionId).run();
+    }
     const row = await this.db.prepare("SELECT * FROM reviews WHERE question_id = ?").bind(questionId).first<ReviewRow>();
-    if (!saved.meta.changes && !row) throw new ApiError(409, "선택한 신발을 먼저 기록해 주세요.", "CHOICE_REQUIRED");
+    if (!guarded && !saved.meta.changes && !row) throw new ApiError(409, "선택한 신발을 먼저 기록해 주세요.", "CHOICE_REQUIRED");
     if (!row) throw new Error("review_missing");
     return { item: reviewView(row) };
   }

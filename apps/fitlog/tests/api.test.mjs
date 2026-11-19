@@ -513,3 +513,41 @@ test("additive request fingerprints preserve legacy rows and do not invent their
     assert.deepEqual({ ...row }, { id, body, request_fingerprint: null });
   }
 });
+
+
+test("guarded first edits from two tabs never overwrite a more recent shoe or question", async t => {
+  const { api } = fixture(t);
+  const initialShoe = (await api("POST", "shoes", shoe())).data.item;
+  const baseShoe = { brand: initialShoe.brand, model: initialShoe.model, size: initialShoe.size, width: initialShoe.width, fit: initialShoe.fit, purpose: initialShoe.purpose, memo: initialShoe.memo };
+  const firstShoe = await api("PATCH", `shoes/${initialShoe.id}`, { ...baseShoe, model: "첫 창 수정", expected: baseShoe });
+  assert.equal(firstShoe.status, 200);
+  const secondShoe = await api("PATCH", `shoes/${initialShoe.id}`, { ...baseShoe, model: "두 번째 창 수정", expected: baseShoe });
+  assert.equal(secondShoe.status, 409);
+  assert.equal(secondShoe.data.code, "REMOTE_RECORD_CHANGED");
+  assert.equal((await api("GET", "shoes")).data.items[0].model, "첫 창 수정");
+  const q = (await api("POST", "questions", question())).data.item;
+  const baseQuestion = { title: q.title, body: q.body, purpose: q.purpose, width: q.width, targetModel: q.targetModel };
+  assert.equal((await api("PATCH", `questions/${q.id}`, { ...baseQuestion, title: "첫 창이 고친 질문", expected: baseQuestion })).status, 200);
+  assert.equal((await api("PATCH", `questions/${q.id}`, { ...baseQuestion, title: "두 번째 창의 질문", expected: baseQuestion })).status, 409);
+  assert.equal((await api("GET", `questions/${q.id}`)).data.item.title, "첫 창이 고친 질문");
+});
+
+test("guarded choice and followup edits require the baseline, including creation", async t => {
+  const { api } = fixture(t);
+  const q = (await api("POST", "questions", question())).data.item;
+  const choiceA = await api("PUT", `questions/${q.id}/choice`, { ...chosen, expected: null });
+  assert.equal(choiceA.status, 200);
+  assert.equal((await api("PUT", `questions/${q.id}/choice`, { ...chosen, model: "다른 창의 모델", expected: null })).status, 409);
+  const prior = choiceA.data.item;
+  assert.equal((await api("PUT", `questions/${q.id}/choice`, { ...chosen, model: "수정된 모델", expected: prior })).status, 200);
+  assert.equal((await api("PUT", `questions/${q.id}/choice`, { ...chosen, model: "오래된 변경", expected: prior })).status, 409);
+  const initialReview = await api("PUT", `questions/${q.id}/review`, { ...review(), expected: null });
+  assert.equal(initialReview.status, 200);
+  const oldReview = initialReview.data.item;
+  assert.equal((await api("PUT", `questions/${q.id}/review`, { ...review({body:"같은 후기를 두 번째 창이 덮어쓰려고 합니다."}), expected: null })).status, 409);
+  const current = await api("PUT", `questions/${q.id}/review`, { ...review({body:"새로 확인해 작성한 첫 번째 창의 후기입니다."}), expected: oldReview }, alice, {context:{now: new Date("2026-11-19T06:00:00Z")}});
+  assert.equal(current.status, 200);
+  const stale = await api("PUT", `questions/${q.id}/review`, { ...review({body:"두 번째 창의 오래된 후기입니다. 저장되면 안 돼요."}), expected: oldReview });
+  assert.equal(stale.status, 409);
+  assert.equal((await api("GET", `questions/${q.id}`)).data.item.review.body, "새로 확인해 작성한 첫 번째 창의 후기입니다.");
+});

@@ -46,7 +46,7 @@ export async function api<T>(path: string, options: RequestInit = {}, fetcher: t
 export function retainPending(error: unknown, hadUnconfirmedAttempt = false): boolean {
   // A refusal on a later attempt cannot prove that an earlier lost response
   // did not commit. Keep its original request identity until confirmed.
-  return hadUnconfirmedAttempt || !(error instanceof ApiError) || error.uncertain || error.code === "REQUEST_ID_CONFLICT" || error.code === "REQUEST_CONFLICT";
+  return hadUnconfirmedAttempt || !(error instanceof ApiError) || error.uncertain || error.code === "REQUEST_ID_CONFLICT" || error.code === "REQUEST_CONFLICT" || error.code === "REMOTE_RECORD_CHANGED";
 }
 
 function record(value: unknown): value is Record<string, unknown> {

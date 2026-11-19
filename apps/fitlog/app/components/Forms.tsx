@@ -62,7 +62,8 @@ export function ShoeForm({ shoe, userId, onClose, onSaved }: Close & DraftOwner 
   const close = () => form.close(onClose);
   function submit(event: FormEvent) {
     event.preventDefault();
-    void form.submit<Shoe>(requestId => ({ requestId, brand: formText(v.brand, 1, 40, "브랜드"), model: formText(v.model, 1, 80, "모델명"), size: shoeSize(v.size), width: v.width, fit: v.fit, purpose: v.purpose, memo: v.memo.trim() }), onSaved);
+    void form.submit<Shoe>(requestId => ({ requestId, brand: formText(v.brand, 1, 40, "브랜드"), model: formText(v.model, 1, 80, "모델명"), size: shoeSize(v.size), width: v.width, fit: v.fit, purpose: v.purpose, memo: v.memo.trim(),
+      ...(shoe ? { expected: { brand: shoe.brand, model: shoe.model, size: shoe.size, width: shoe.width, fit: shoe.fit, purpose: shoe.purpose, memo: shoe.memo } } : {}) }), onSaved);
   }
   return <Modal title={shoe ? "신발 기록 수정" : "내 신발장에 한 켤레 추가"} subtitle="지금 신는 신발이 다음 선택의 기준이 돼요." onClose={close} busy={form.busy}>
     <form onSubmit={submit}><DraftNotice form={form} onClose={onClose} /><fieldset disabled={!form.ready || form.busy || Boolean(form.pending) || form.confirmed}>
@@ -87,7 +88,8 @@ export function QuestionForm({ question, userId, initialReferenceShoeId, shoes, 
     event.preventDefault();
     void form.submit<Question>(requestId => {
       if (!question) validateReference(v.referenceShoeId, shoeList);
-      return { requestId, title: formText(v.title, 5, 100, "제목"), body: formText(v.body, 10, 3000, "질문 내용"), purpose: v.purpose, width: v.width, targetModel: v.targetModel.trim(), ...(!question && v.referenceShoeId ? { referenceShoeId: v.referenceShoeId } : {}) };
+      return { requestId, title: formText(v.title, 5, 100, "제목"), body: formText(v.body, 10, 3000, "질문 내용"), purpose: v.purpose, width: v.width, targetModel: v.targetModel.trim(), ...(!question && v.referenceShoeId ? { referenceShoeId: v.referenceShoeId } : {}),
+        ...(question ? { expected: { title: question.title, body: question.body, purpose: question.purpose, width: question.width, targetModel: question.targetModel } } : {}) };
     }, onSaved);
   }
   return <Modal title={question ? "질문 수정하기" : "다음 한 켤레, 물어보세요"} subtitle="나의 조건을 함께 적으면 더 가까운 경험을 만날 수 있어요." onClose={close} busy={form.busy} wide>
@@ -120,7 +122,7 @@ export function ChoiceForm({ question, userId, onClose, onSaved }: Close & Draft
   const form = useDraftForm({ userId, kind: "choice", targetId: question.id, path: `/api/questions/${question.id}/choice`, method: "PUT", initialValues: { brand: question.choice?.brand ?? "", model: question.choice?.model ?? "", size: String(question.choice?.size ?? "") } });
   const v = form.values;
   const close = () => form.close(onClose);
-  const submit = (event: FormEvent) => { event.preventDefault(); void form.submit<Choice>(() => ({ brand: formText(v.brand, 1, 40, "브랜드"), model: formText(v.model, 1, 80, "모델명"), size: shoeSize(v.size) }), onSaved); };
+  const submit = (event: FormEvent) => { event.preventDefault(); void form.submit<Choice>(() => ({ brand: formText(v.brand, 1, 40, "브랜드"), model: formText(v.model, 1, 80, "모델명"), size: shoeSize(v.size), expected: question.choice ? { brand: question.choice.brand, model: question.choice.model, size: question.choice.size } : null }), onSaved); };
   return <Modal title={question.choice ? "선택한 신발 수정" : "어떤 한 켤레를 골랐나요?"} subtitle="질문 이후의 선택을 이어 남겨 주세요." onClose={close} busy={form.busy}>
     <form onSubmit={submit}><DraftNotice form={form} onClose={onClose} /><fieldset disabled={!form.ready || form.busy || Boolean(form.pending) || form.confirmed}><Field label="브랜드"><input required maxLength={40} value={v.brand} onChange={e => form.change("brand", e.target.value)} placeholder="선택한 신발의 브랜드" /></Field><Field label="모델명"><input required maxLength={80} value={v.model} onChange={e => form.change("model", e.target.value)} placeholder="모델명과 버전" /></Field><Field label="선택한 사이즈 (mm)"><input type="number" min={180} max={350} step={5} inputMode="numeric" required value={v.size} onChange={e => form.change("size", e.target.value)} placeholder="예: 270" /></Field><p className="field-hint">답변이 없어도 나의 선택과 후기를 이어 기록할 수 있어요.</p></fieldset><FormError error={form.error} /><Footer busy={form.busy} pending={Boolean(form.pending)} confirmed={form.confirmed} onClose={close} draft label="선택 기록하기" /></form>
   </Modal>;
@@ -134,7 +136,8 @@ export function ReviewForm({ question, userId, onClose, onSaved }: Close & Draft
     if (!/^\d{4}-\d{2}-\d{2}$/.test(v.firstUsedAt) || v.firstUsedAt > todaySeoul()) throw new Error("실제로 사용을 시작한 날짜를 오늘 또는 이전 날짜로 입력해 주세요.");
     const distance = v.distanceKm.trim() === "" ? null : Number(v.distanceKm);
     if (distance !== null && (!Number.isFinite(distance) || distance < 0 || distance > 10000)) throw new Error("달린 거리는 0~10,000km 사이로 입력하거나 비워 주세요.");
-    return { body: formText(v.body, 10, 3000, "후기"), fit: v.fit, firstUsedAt: v.firstUsedAt, distanceKm: distance };
+    return { body: formText(v.body, 10, 3000, "후기"), fit: v.fit, firstUsedAt: v.firstUsedAt, distanceKm: distance,
+      expected: question.review ? { body: question.review.body, fit: question.review.fit, firstUsedAt: question.review.firstUsedAt, distanceKm: question.review.distanceKm, updatedAt: question.review.updatedAt } : null };
   }, onSaved); };
   return <Modal title={question.review ? "착용 후기 수정" : "신어 본 뒤, 이야기를 이어 주세요"} subtitle={question.choice ? `${question.choice.brand} ${question.choice.model} · ${question.choice.size}mm` : undefined} onClose={close} busy={form.busy}>
     <form onSubmit={submit}><DraftNotice form={form} onClose={onClose} /><fieldset disabled={!form.ready || form.busy || Boolean(form.pending) || form.confirmed}><div className="form-grid"><Field label="처음 사용한 날짜"><input type="date" required max={todaySeoul()} value={v.firstUsedAt} onChange={e => form.change("firstUsedAt", e.target.value)} /></Field><Field label="누적 거리 (km) · 선택"><input type="number" min={0} max={10000} step="any" inputMode="decimal" value={v.distanceKm} onChange={e => form.change("distanceKm", e.target.value)} placeholder="기록한 경우만 입력" /></Field></div><Field label="실제로 신어 본 착용감"><select value={v.fit} onChange={e => form.change("fit", e.target.value as Fit)}><Options labels={FIT_LABELS} /></select></Field><Field label="사용 후기" hint="처음 기대했던 점과 직접 느낀 점을 함께 남기면 도움이 돼요."><textarea required minLength={10} maxLength={3000} rows={6} value={v.body} onChange={e => form.change("body", e.target.value)} placeholder="처음 고민했던 부분은 어땠나요? 달린 상황과 착용감을 적어 주세요." /></Field><div className="notice notice-neutral"><Info size={16} /><span>사용 기간은 후기를 작성한 날을 기준으로 남아요. 시간이 지나도 자동으로 더 오래 사용한 후기가 되지는 않아요.</span></div></fieldset><FormError error={form.error} /><Footer busy={form.busy} pending={Boolean(form.pending)} confirmed={form.confirmed} onClose={close} draft label="착용 후기 남기기" /></form>
