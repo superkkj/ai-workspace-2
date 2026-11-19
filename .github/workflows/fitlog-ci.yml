@@ -1,0 +1,41 @@
+name: Fitlog checks
+
+on:
+  pull_request:
+    paths:
+      - "apps/fitlog/**"
+      - ".github/workflows/fitlog-ci.yml"
+  push:
+    branches: [main]
+    paths:
+      - "apps/fitlog/**"
+      - ".github/workflows/fitlog-ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fitlog-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/fitlog
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/fitlog/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
